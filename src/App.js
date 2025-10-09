@@ -3,50 +3,64 @@ import { Plus, ChevronRight } from 'lucide-react'
 import { supabase } from './supabaseClient'
 import { validateTelegramAuth } from './utils/telegramAuth'
 
+// Telegram WebApp fallback for web testing
+const tg = window.Telegram?.WebApp || {
+  ready: () => { },
+  expand: () => { },
+  MainButton: {
+    setText: () => { },
+    show: () => { },
+    hide: () => { },
+    onClick: () => { },
+    enable: () => { },
+    showProgress: () => { },
+    hideProgress: () => { },
+  },
+  BackButton: {
+    show: () => { },
+    hide: () => { },
+    onClick: () => { },
+  },
+  HapticFeedback: {
+    impactOccurred: () => { },
+    selectionChanged: () => { },
+  },
+  themeParams: {
+    bg_color: '#ffffff',
+    text_color: '#000000',
+    hint_color: '#999999',
+    link_color: '#2481cc',
+    button_color: '#2481cc',
+    button_text_color: '#ffffff',
+    secondary_bg_color: '#f4f4f5',
+    section_bg_color: '#ffffff',
+    section_header_text_color: '#6d6d72',
+    subtitle_text_color: '#999999',
+    destructive_text_color: '#ff3b30',
+  },
+}
+
+// Fake user for web testing
+const fakeUser = {
+  id: '00000000-0000-0000-0000-000000000000',
+  telegram_username: 'testuser',
+  telegram_first_name: 'Test',
+}
+
+const initData = window.Telegram?.WebApp?.initData
+const { isValid, user } =
+  validateTelegramAuth(initData) || { isValid: true, user: fakeUser }
+
 const App = () => {
-  const [tg, setTg] = useState(null)
   const [view, setView] = useState('home')
   const [funnels, setFunnels] = useState([])
   const [selectedFunnel, setSelectedFunnel] = useState(null)
   const [pages, setPages] = useState([])
 
-  // Initialize Telegram WebApp or fallback
+  const t = tg.themeParams
+
+  // Initialize Telegram WebApp
   useEffect(() => {
-    if (window.Telegram?.WebApp) {
-      setTg(window.Telegram.WebApp)
-    } else {
-      setTg({
-        ready: () => { },
-        expand: () => { },
-        MainButton: { setText: () => { }, show: () => { }, hide: () => { }, onClick: () => { } },
-        BackButton: { show: () => { }, hide: () => { }, onClick: () => { } },
-        HapticFeedback: { impactOccurred: () => { }, selectionChanged: () => { } },
-        themeParams: {
-          bg_color: '#ffffff',
-          text_color: '#000000',
-          hint_color: '#999999',
-          link_color: '#2481cc',
-          button_color: '#2481cc',
-          button_text_color: '#ffffff',
-          secondary_bg_color: '#f4f4f5',
-          section_bg_color: '#ffffff',
-          section_header_text_color: '#6d6d72',
-          subtitle_text_color: '#999999',
-          destructive_text_color: '#ff3b30',
-        },
-      })
-    }
-  }, [])
-
-  const t = tg?.themeParams || {}
-
-  // Telegram authentication
-  const initData = window.Telegram?.WebApp?.initData
-  const { isValid, user } = validateTelegramAuth(initData || '')
-
-  // Setup Telegram UI
-  useEffect(() => {
-    if (!tg) return
     tg.ready()
     tg.expand()
     document.body.style.margin = '0'
@@ -63,50 +77,51 @@ const App = () => {
 
     if (view === 'home') tg.BackButton.hide()
     else tg.BackButton.show()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tg, view])
+  }, [view])
 
   // Fetch funnels
   useEffect(() => {
     if (!isValid) return
+
     async function fetchFunnels() {
       const { data, error } = await supabase
         .from('funnels')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-      if (error) console.error(error)
+      if (error) console.error('Error fetching funnels:', error)
       else setFunnels(data)
     }
+
     fetchFunnels()
   }, [view, isValid, user?.id])
 
   // Fetch pages for selected funnel
   useEffect(() => {
     if (!selectedFunnel || !isValid) return
+
     async function fetchPages() {
       const { data, error } = await supabase
         .from('pages')
         .select('*')
         .eq('funnel_id', selectedFunnel.id)
         .order('order_position', { ascending: true })
-      if (error) console.error(error)
+      if (error) console.error('Error fetching pages:', error)
       else setPages(data)
     }
+
     fetchPages()
   }, [selectedFunnel, isValid])
 
-  // Haptic feedback
-  const haptic = () => tg?.HapticFeedback?.impactOccurred('light')
-
   // Create new funnel
   const createFunnel = async () => {
+    console.log('Create Funnel clicked!')
     if (!isValid) return
     const { data, error } = await supabase
       .from('funnels')
       .insert({ user_id: user.id, name: 'New Funnel', status: 'draft' })
       .select()
-    if (error) console.error(error)
+    if (error) console.error('Error creating funnel:', error)
     else {
       setFunnels([data[0], ...funnels])
       setSelectedFunnel(data[0])
@@ -126,15 +141,30 @@ const App = () => {
         order_position: pages.length + 1,
       })
       .select()
-    if (error) console.error(error)
+    if (error) console.error('Error adding page:', error)
     else setPages([...pages, data[0]])
   }
 
   // Home View
   const HomeView = () => (
     <div style={{ backgroundColor: t.secondary_bg_color, minHeight: '100vh' }}>
-      <div style={{ backgroundColor: t.bg_color, padding: '20px 16px', borderBottom: `0.5px solid ${t.secondary_bg_color}` }}>
-        <h1 style={{ margin: 0, fontSize: '34px', fontWeight: '700', color: t.text_color }}>Funnels</h1>
+      <div
+        style={{
+          backgroundColor: t.bg_color,
+          padding: '20px 16px',
+          borderBottom: `0.5px solid ${t.secondary_bg_color}`,
+        }}
+      >
+        <h1
+          style={{
+            margin: 0,
+            fontSize: '34px',
+            fontWeight: '700',
+            color: t.text_color,
+          }}
+        >
+          Funnels
+        </h1>
       </div>
 
       {/* Funnels list */}
@@ -145,7 +175,7 @@ const App = () => {
             onClick={() => {
               setSelectedFunnel(f)
               setView('funnel')
-              haptic()
+              tg.HapticFeedback.impactOccurred('light')
             }}
             style={{
               padding: '12px 16px',
@@ -153,15 +183,21 @@ const App = () => {
               alignItems: 'center',
               gap: '12px',
               cursor: 'pointer',
-              borderBottom: index < funnels.length - 1 ? `0.5px solid ${t.secondary_bg_color}` : 'none',
+              borderBottom:
+                index < funnels.length - 1
+                  ? `0.5px solid ${t.secondary_bg_color}`
+                  : 'none',
             }}
           >
-            <div style={{ flex: 1, fontSize: '17px', color: t.text_color }}>{f.name}</div>
+            <div style={{ flex: 1, fontSize: '17px', color: t.text_color }}>
+              {f.name}
+            </div>
             <ChevronRight size={20} color={t.hint_color} />
           </div>
         ))}
       </div>
 
+      {/* Add new funnel */}
       <div
         onClick={createFunnel}
         style={{
@@ -186,14 +222,29 @@ const App = () => {
 
   // Funnel View
   const FunnelView = () => (
-    <div style={{ backgroundColor: t.secondary_bg_color, minHeight: '100vh', paddingBottom: '80px' }}>
-      <div style={{ backgroundColor: t.bg_color, padding: '16px', borderBottom: `0.5px solid ${t.secondary_bg_color}` }}>
+    <div
+      style={{
+        backgroundColor: t.secondary_bg_color,
+        minHeight: '100vh',
+        paddingBottom: '80px',
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: t.bg_color,
+          padding: '16px',
+          borderBottom: `0.5px solid ${t.secondary_bg_color}`,
+        }}
+      >
         <input
           type="text"
           value={selectedFunnel?.name || ''}
           onChange={async (e) => {
             setSelectedFunnel({ ...selectedFunnel, name: e.target.value })
-            await supabase.from('funnels').update({ name: e.target.value }).eq('id', selectedFunnel.id)
+            await supabase
+              .from('funnels')
+              .update({ name: e.target.value })
+              .eq('id', selectedFunnel.id)
           }}
           style={{
             width: '100%',
@@ -205,7 +256,15 @@ const App = () => {
             outline: 'none',
           }}
         />
-        <div style={{ fontSize: '15px', color: t.subtitle_text_color, marginTop: '4px' }}>{pages.length} pages</div>
+        <div
+          style={{
+            fontSize: '15px',
+            color: t.subtitle_text_color,
+            marginTop: '4px',
+          }}
+        >
+          {pages.length} pages
+        </div>
       </div>
 
       {/* Pages List */}
@@ -219,11 +278,20 @@ const App = () => {
               alignItems: 'center',
               gap: '12px',
               cursor: 'pointer',
-              borderBottom: index < pages.length - 1 ? `0.5px solid ${t.secondary_bg_color}` : 'none',
+              borderBottom:
+                index < pages.length - 1
+                  ? `0.5px solid ${t.secondary_bg_color}`
+                  : 'none',
             }}
           >
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '17px', fontWeight: '400', color: t.text_color }}>
+              <div
+                style={{
+                  fontSize: '17px',
+                  fontWeight: '400',
+                  color: t.text_color,
+                }}
+              >
                 {p.name} ({p.type})
               </div>
             </div>
@@ -255,7 +323,17 @@ const App = () => {
     </div>
   )
 
-  return <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>{view === 'home' ? <HomeView /> : <FunnelView />}</div>
+  return (
+    <div
+      style={{
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      }}
+    >
+      {view === 'home' && <HomeView />}
+      {view === 'funnel' && <FunnelView />}
+    </div>
+  )
 }
 
 export default App
